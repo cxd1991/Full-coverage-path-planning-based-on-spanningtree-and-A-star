@@ -29,6 +29,9 @@
 
 Precondition: 要求输入的地图四周确确实实封闭，且机器人在一个封闭区域内。
 
+MapReader 依赖 `numpy`，请先确保环境中已安装。
+
+
 ### SEER smap 格式
 
 1. `Main.py` 中将 `map_path` 改为想要读入的 `smap` 格式文件
