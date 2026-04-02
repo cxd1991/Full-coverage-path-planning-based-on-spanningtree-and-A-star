@@ -20,7 +20,14 @@ def away_free_space(start,obstacles,result):
         # 得到  points 点中距离 start 点最近的点
         point = get_nearest_piont(start,way_points)
         # 计算从当前点到最近点的路径
-        rx,ry = get_path_to_nearest_point(start,point,obstacles)
+        plan_result = get_path_to_nearest_point(start,point,obstacles)
+        if not plan_result["found"]:
+            print("路径规划失败:", plan_result["reason"], "start=", start, "goal=", point)
+            way_points.remove(point)
+            continue
+        path_points = plan_result["path"]
+        rx = [p[0] for p in path_points]
+        ry = [p[1] for p in path_points]
         print(rx, ry)
         for i in range(len(rx)):
             way_x.append(rx[i])
@@ -32,24 +39,57 @@ def away_free_space(start,obstacles,result):
 
 # 创建在 dijikstra 中使用的节点
 class Node:
-    def __init__(self,x,y,cost,parent_index):
+    def __init__(self,x,y,g_cost,h_cost,parent_index):
         self.x = x
         self.y = y
-        self.cost = cost
+        self.g_cost = g_cost
+        self.h_cost = h_cost
         self.parant_index = parent_index
+
+    @property
+    def cost(self):
+        return self.g_cost + self.h_cost
 
 
 # 计算从当前点到最近点的路径,使用 A* 算法
-def get_path_to_nearest_point(start,goal,obstacles):
+def get_path_to_nearest_point(start,goal,obstacles,map_bounds=None,valid_mask=None):
     open_set={}
     close_set={}
-    start_node = Node(start[0],start[1], 0, (-1,-1) )
-    goal_node = Node(goal[0], goal[1], 0, (-1, -1) )
+    obstacle_set = set(obstacles)
+    start_node = Node(start[0],start[1], 0, 0, (-1,-1) )
+    goal_node = Node(goal[0], goal[1], 0, 0, (-1, -1) )
     open_set[(start_node.x,start_node.y)] = start_node
 
     motion = [ [1,0,1],[0,1,1],[-1,0,1],[0,-1,1]]
                # [-1,-1,math.sqrt(2)],[-1,1,math.sqrt(2)],[1,-1,math.sqrt(2)],[1,1,math.sqrt(2)]]
+
+    if start in obstacle_set or goal in obstacle_set:
+        print("[A*] 起点或终点位于障碍物中: start=", start, "goal=", goal)
+        return {"found": False, "path": [], "reason": "start_or_goal_in_obstacle"}
+
+    if map_bounds is None and valid_mask is None:
+        all_points = list(obstacle_set) + [start, goal]
+        x_values = [p[0] for p in all_points]
+        y_values = [p[1] for p in all_points]
+        map_bounds = (min(x_values), max(x_values), min(y_values), max(y_values))
+
+    def is_valid_position(pos):
+        x, y = pos
+        if map_bounds is not None:
+            min_x, max_x, min_y, max_y = map_bounds
+            if x < min_x or x > max_x or y < min_y or y > max_y:
+                return False
+        if valid_mask is not None and not valid_mask(pos):
+            return False
+        return True
+
+    if not is_valid_position(start) or not is_valid_position(goal):
+        print("[A*] 起点或终点越界: start=", start, "goal=", goal, "bounds=", map_bounds)
+        return {"found": False, "path": [], "reason": "start_or_goal_out_of_bounds"}
+
     while 1:
+        if not open_set:
+            return {"found": False, "path": [], "reason": "open_set_exhausted"}
         c_id = min(open_set, key = lambda o: open_set[o].cost)
         current = open_set[c_id]
         # 判断是否是终点
@@ -57,7 +97,8 @@ def get_path_to_nearest_point(start,goal,obstacles):
             print("Find goal")
             print('from'+str(start)+'to'+str(goal)+'is:')
             goal_node.parant_index = current.parant_index
-            goal_node.cost = current.cost
+            goal_node.g_cost = current.g_cost
+            goal_node.h_cost = current.h_cost
             # close_set[c_id] = current
 
             # print("the key-value of close set")
@@ -66,25 +107,34 @@ def get_path_to_nearest_point(start,goal,obstacles):
             # 输出从 start->goal的路径
             rx = list(reversed(rx))
             ry = list(reversed(ry))
-            return rx,ry
+            return {"found": True, "path": list(zip(rx, ry)), "reason": "ok"}
 
         del open_set[c_id]
         close_set[c_id] = current
 
         for move_x,move_y,move_cost in motion:
-            node = Node(current.x+move_x,current.y+move_y,move_cost+current.cost,(current.x,current.y))
-            node.cost = node.cost + ( (node.x-goal_node.x)**2 + (node.y-goal_node.y)**2 )**0.5
+            next_pos = (current.x+move_x,current.y+move_y)
+            if not is_valid_position(next_pos):
+                continue
+            node = Node(
+                next_pos[0],
+                next_pos[1],
+                current.g_cost + move_cost,
+                ((next_pos[0]-goal_node.x)**2 + (next_pos[1]-goal_node.y)**2 )**0.5,
+                (current.x,current.y)
+            )
             n_id = (current.x+move_x,current.y+move_y)
             # print(n_id)
             if n_id in close_set:
                 continue
-            if n_id in obstacles:
+            if n_id in obstacle_set:
                 continue
             if n_id not in open_set:
                 open_set[n_id] = node
             else:
                 if open_set[n_id].cost >= node.cost:
-                    open_set[n_id].cost = node.cost
+                    open_set[n_id].g_cost = node.g_cost
+                    open_set[n_id].h_cost = node.h_cost
                     open_set[n_id].parant_index = node.parant_index
 
 
@@ -187,4 +237,3 @@ def distance(x,y,res):
             if dis==1:
                 return dis_min
     return dis_min
-

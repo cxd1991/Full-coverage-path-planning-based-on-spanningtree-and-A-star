@@ -4,10 +4,15 @@ import random
 import math
 
 class Node():
-    def __init__(self,position,cost,parent_id):
+    def __init__(self,position,g_cost,h_cost,parent_id):
         self.position = position
-        self.cost = cost
+        self.g_cost = g_cost
+        self.h_cost = h_cost
         self.parent_id = parent_id
+
+    @property
+    def cost(self):
+        return self.g_cost + self.h_cost
 
 class PathWithObstacles():
 
@@ -22,6 +27,8 @@ class PathWithObstacles():
         self.path_xy = []
         self.new_obstables = []
         self.new_obstable_expanded = []
+        self.new_obstables_set = set()
+        self.new_obstable_expanded_set = set()
 
     # 初始化数据
     def date_read(self):
@@ -71,6 +78,8 @@ class PathWithObstacles():
             plt.plot(self.new_obstables[i][0], self.new_obstables[i][1], '.r')
 
         self.new_obstable_expand()
+        self.new_obstables_set = set(self.new_obstables)
+        self.new_obstable_expanded_set = set(self.new_obstable_expanded)
         for i in range(len(self.new_obstable_expanded)):
             plt.plot(self.new_obstable_expanded[i][0], self.new_obstable_expanded[i][1], '.b')
 
@@ -91,6 +100,8 @@ class PathWithObstacles():
     def get_result_path(self):
         # 先对障碍物进行膨胀处理
         self.new_obstable_expand()
+        self.new_obstables_set = set(self.new_obstables)
+        self.new_obstable_expanded_set = set(self.new_obstable_expanded)
         result_path = []
         jump = 0
         # 依次对障碍物进行遍历，如果路径安全则添加到 result_path， 否则 重新生成一段路径接入result_path
@@ -101,16 +112,19 @@ class PathWithObstacles():
             if jump!=0: # 判断需要跳过几个点
                 jump = jump - 1
                 continue
-            if (self.path_xy[i][0],self.path_xy[i][1]) not in self.new_obstables and \
-                    (self.path_xy[i][0],self.path_xy[i][1]) not in self.new_obstable_expanded :
+            if (self.path_xy[i][0],self.path_xy[i][1]) not in self.new_obstables_set and \
+                    (self.path_xy[i][0],self.path_xy[i][1]) not in self.new_obstable_expanded_set :
                 result_path.append((self.path_xy[i][0],self.path_xy[i][1]))
             else:
                 start_point = (self.path_xy[i-1][0],self.path_xy[i-1][1])
                 goal_point,m = self.get_goal_point(i)
                 jump = m
-                son_path = self.get_son_path(start_point,goal_point)
-                for i in son_path:
-                    result_path.append(i)
+                son_path_result = self.get_son_path(start_point,goal_point)
+                if not son_path_result["found"]:
+                    print("子路径规划失败:", son_path_result["reason"], "start=", start_point, "goal=", goal_point)
+                    continue
+                for point in son_path_result["path"]:
+                    result_path.append(point)
         # plt.show()
         return result_path
 
@@ -127,40 +141,62 @@ class PathWithObstacles():
     def get_son_path(self,start_point,goal_point):
 
         print("寻找从",start_point,"--->",goal_point,"的路径")
-        start_node = Node(start_point,0,(-1,-1))
-        goal_node = Node(goal_point,0,(-1,-1))
+        start_node = Node(start_point,0,0,(-1,-1))
+        goal_node = Node(goal_point,0,0,(-1,-1))
         open_set = {}
         close_set = {}
         open_set[start_node.position] = start_node
         motion = [ [1,0,1], [-1,0,1], [0,1,1], [0,-1,1] ]
+        obstacles = self.new_obstables_set | self.new_obstable_expanded_set
+
+        if start_point in obstacles or goal_point in obstacles:
+            print("[A*] 起点或终点位于障碍物中: start=", start_point, "goal=", goal_point)
+            return {"found": False, "path": [], "reason": "start_or_goal_in_obstacle"}
+
+        x_values = [p[0] for p in self.path_xy] + [start_point[0], goal_point[0]]
+        y_values = [p[1] for p in self.path_xy] + [start_point[1], goal_point[1]]
+        bounds = (min(x_values), max(x_values), min(y_values), max(y_values))
+
+        def is_in_bounds(position):
+            x, y = position
+            min_x, max_x, min_y, max_y = bounds
+            return min_x <= x <= max_x and min_y <= y <= max_y
 
         while 1:
+            if not open_set:
+                return {"found": False, "path": [], "reason": "open_set_exhausted"}
             c_id = min(open_set, key = lambda o : open_set[o].cost )
             current = open_set[c_id]
             if current.position == goal_node.position:
                 print("找到路径")
                 goal_node.parent_id = current.parent_id
-                goal_node.cost = current.cost
+                goal_node.g_cost = current.g_cost
+                goal_node.h_cost = current.h_cost
                 path = self.find_final_path(goal_node,close_set)
-                return path
+                return {"found": True, "path": path, "reason": "ok"}
 
             del open_set[c_id]
             close_set[c_id] = current
 
             for move_x,move_y,move_cost in motion:
-                node = Node((current.position[0]+move_x,current.position[1]+move_y),\
-                            move_cost+current.cost,(current.position[0],current.position[1]))
-                node.cost = node.cost + ((node.position[0] - goal_node.position[0]) ** 2 + (node.position[1] - goal_node.position[1]) ** 2) ** 0.5
+                next_pos = (current.position[0]+move_x,current.position[1]+move_y)
+                if not is_in_bounds(next_pos):
+                    continue
+                node = Node(next_pos,\
+                            current.g_cost+move_cost,\
+                            ((next_pos[0] - goal_node.position[0]) ** 2 + (next_pos[1] - goal_node.position[1]) ** 2) ** 0.5,\
+                            (current.position[0],current.position[1]))
                 n_id = node.position
                 if n_id in close_set:
                     continue
-                if n_id in self.new_obstables or n_id in self.new_obstable_expanded:
+                if n_id in obstacles:
                     continue
                 if n_id not in open_set:
                     open_set[n_id] = node
                 else:
                     if open_set[n_id].cost > node.cost:
-                        open_set[n_id].cost = node.cost
+                        open_set[n_id].g_cost = node.g_cost
+                        open_set[n_id].h_cost = node.h_cost
                         open_set[n_id].parent_id = node.parent_id
 
     # 回溯路径
@@ -183,8 +219,8 @@ class PathWithObstacles():
         for i in range(k+1,len(self.path_xy)+1):
             # 记录跳过的点数
             jump = jump + 1
-            if (self.path_xy[i][0],self.path_xy[i][1]) not in self.new_obstables and \
-                    (self.path_xy[i][0],self.path_xy[i][1]) not in self.new_obstable_expanded :
+            if (self.path_xy[i][0],self.path_xy[i][1]) not in self.new_obstables_set and \
+                    (self.path_xy[i][0],self.path_xy[i][1]) not in self.new_obstable_expanded_set :
                 return (self.path_xy[i][0],self.path_xy[i][1]), jump
             else:
                 continue
