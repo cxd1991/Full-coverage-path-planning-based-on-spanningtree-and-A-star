@@ -11,7 +11,7 @@ class Node():
 
 class PathWithObstacles():
 
-    def __init__(self):
+    def __init__(self, inflate_radius_cells=1):
         self.blocked_x = []
         self.blocked_y = []
         self.path_x = []
@@ -22,6 +22,7 @@ class PathWithObstacles():
         self.path_xy = []
         self.new_obstables = []
         self.new_obstable_expanded = []
+        self.inflate_radius_cells = inflate_radius_cells
 
     # 初始化数据
     def date_read(self):
@@ -41,7 +42,7 @@ class PathWithObstacles():
         for y in self.way_y:
             self.path_y.append(y)
         # plt.subplot(1,2,1)
-        plt.plot(self.blocked_x, self.blocked_y, '.')
+        plt.plot(self.blocked_x, self.blocked_y, '.', color='0.75', label='Static obstacles')
         # plt.plot(self.path_x, self.path_y, '.-y')
         # for i in range(0,len(path_x)-1,1):
         #     plt.plot([path_x[i], path_x[i+1]], [path_y[i],path_y[i+1]], '.-g')
@@ -68,29 +69,44 @@ class PathWithObstacles():
                 self.new_obstables.append((250 + i, 140 + j))
 
         for i in range(len(self.new_obstables)):
-            plt.plot(self.new_obstables[i][0], self.new_obstables[i][1], '.r')
+            if i == 0:
+                plt.plot(self.new_obstables[i][0], self.new_obstables[i][1], '.r', label='New obstacles')
+            else:
+                plt.plot(self.new_obstables[i][0], self.new_obstables[i][1], '.r')
 
         self.new_obstable_expand()
         for i in range(len(self.new_obstable_expanded)):
-            plt.plot(self.new_obstable_expanded[i][0], self.new_obstable_expanded[i][1], '.b')
+            if i == 0:
+                plt.plot(self.new_obstable_expanded[i][0], self.new_obstable_expanded[i][1], '.b', label='Inflated obstacles')
+            else:
+                plt.plot(self.new_obstable_expanded[i][0], self.new_obstable_expanded[i][1], '.b')
 
         # plt.show()
 
 
     # 膨胀 new_obstable
     def new_obstable_expand(self):
-        print(len(self.new_obstables))
+        print("原始新增障碍数量:", len(self.new_obstables))
+        expanded_points = []
+        r = self.inflate_radius_cells
         for k in range(len(self.new_obstables)):
-            for i in range(-1,-1):
-                for j in range(-1,-1):
-                    if (self.new_obstables[k][0]+i, self.new_obstables[k][1]+j) not in self.new_obstables:
-                        self.new_obstable_expanded.append((self.new_obstables[k][0]+i, self.new_obstables[k][1]+j))
+            for i in range(-r, r + 1):
+                for j in range(-r, r + 1):
+                    candidate = (self.new_obstables[k][0] + i, self.new_obstables[k][1] + j)
+                    if candidate not in self.new_obstables:
+                        expanded_points.append(candidate)
+        self.new_obstable_expanded = list(set(expanded_points))
+        print("膨胀后新增障碍数量:", len(self.new_obstable_expanded))
 
 
     # 根据 self.blocked_xy，self.new_obstables,self.new_obstable_expanded,self.path_xy 进行轨迹重规划
     def get_result_path(self):
         # 先对障碍物进行膨胀处理
+        print("get_result_path() 前 - 原始新增障碍数量:", len(self.new_obstables))
+        print("get_result_path() 前 - 已有膨胀障碍数量:", len(self.new_obstable_expanded))
         self.new_obstable_expand()
+        print("get_result_path() 后 - 原始新增障碍数量:", len(self.new_obstables))
+        print("get_result_path() 后 - 膨胀障碍数量:", len(self.new_obstable_expanded))
         result_path = []
         jump = 0
         # 依次对障碍物进行遍历，如果路径安全则添加到 result_path， 否则 重新生成一段路径接入result_path
@@ -190,12 +206,16 @@ class PathWithObstacles():
                 continue
 
 
-path_obj = PathWithObstacles()
+path_obj = PathWithObstacles(inflate_radius_cells=1)
 path_obj.date_read()
 result = path_obj.get_result_path()
 
 
 for i in range(0,len(result)-1,1):
-    plt.plot([result[i][0],result[i+1][0]],[result[i][1],result[i+1][1]],'.-y')
+    if i == 0:
+        plt.plot([result[i][0],result[i+1][0]],[result[i][1],result[i+1][1]],'.-g', label='Replanned path')
+    else:
+        plt.plot([result[i][0],result[i+1][0]],[result[i][1],result[i+1][1]],'.-g')
     # plt.pause(.0001)
+plt.legend(loc='best')
 plt.show()
