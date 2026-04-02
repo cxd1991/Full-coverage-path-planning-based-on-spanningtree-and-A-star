@@ -46,3 +46,18 @@ Precondition: 要求输入的地图四周确确实实封闭，且机器人在一
 - 此程序为在[仙工智能 SEER](https://github.com/seer-robotics/)实习期间完成(2021年暑假)，感谢[黄强盛老师](https://github.com/huangqiangsheng)在期间的指导。
 
 - 感谢 [PythonRobotics](https://github.com/AtsushiSakai/PythonRobotics/blob/master/PathPlanning/SpiralSpanningTreeCPP/spiral_spanning_tree_coverage_path_planner.py) 提供主要思路
+
+
+## 如何复现实验
+
+1. 一条命令批量跑全场景（会导出 `eval/artifacts/results.csv`、覆盖热力图和路径图、trace 文件）：
+
+```bash
+python -m eval.run_benchmark
+```
+
+2. 一条命令回放单场景动画（支持倍速和逐帧）：
+
+```bash
+python sim/visual_env.py --scenario sim/scenarios/dynamic_crossing.json --trace eval/artifacts/traces/dynamic_crossing_trace.json --speed 2.0 --step
+```
